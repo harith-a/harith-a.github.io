@@ -18,7 +18,14 @@ function App() {
   const [annualIncome, setAnnualIncome] = useState<string>('');
   const [epf, setEpf] = useState<boolean>(true);
   const [socso, setSocso] = useState<boolean>(true);
+  const [showTaxBrackets, setShowTaxBrackets] = useState<boolean>(false);
+  const [showTaxRelief, setShowTaxRelief] = useState<boolean>(false);
   const [deductions, setDeductions] = useState<Record<string, number>>({});
+  const [rebates, setRebates] = useState<Record<string, number>>({
+    individual: 0,
+    spouse: 0,
+    zakat: 0
+  });
   const [taxableIncome, setTaxableIncome] = useState<number>(0);
   const [taxAmount, setTaxAmount] = useState<number>(0);
   const [effectiveRate, setEffectiveRate] = useState<number>(0);
@@ -39,15 +46,26 @@ function App() {
   ];
 
   const availableDeductions: Deduction[] = [
-    { id: 'personal', label: 'Personal Relief', maxAmount: 9000, defaultAmount: 9000 },
-    { id: 'medical', label: 'Medical Expenses', maxAmount: 8000 },
-    { id: 'lifestyle', label: 'Lifestyle', maxAmount: 2500 },
-    { id: 'education', label: 'Education Fees', maxAmount: 7000 },
-    { id: 'housing', label: 'Housing Loan Interest', maxAmount: 10000 },
-    { id: 'insurance', label: 'Life Insurance & Takaful', maxAmount: 3000 },
-    { id: 'parents', label: 'Parents Care', maxAmount: 3000 },
-    { id: 'equipment', label: 'Lifestyle Equipment', maxAmount: 2500 },
-    { id: 'domestic', label: 'Domestic Tourism', maxAmount: 1000 }
+    { id: 'personal', label: 'Individual and Dependent Relatives', maxAmount: 9000, defaultAmount: 9000 },
+    { id: 'medical', label: 'Special Medical Treatment for Self/Spouse/Child', maxAmount: 8000 },
+    { id: 'disabled_support', label: 'Basic Supporting Equipment', maxAmount: 6000 },
+    { id: 'disabled_individual', label: 'Disabled Individual', maxAmount: 6000 },
+    { id: 'education', label: 'Education Fees (Self)', maxAmount: 7000 },
+    { id: 'medical_serious', label: 'Medical Treatment for Serious Diseases', maxAmount: 10000 },
+    { id: 'lifestyle', label: 'Lifestyle - Purchase of Books/Computers/Sports Equipment/Internet', maxAmount: 2500 },
+    { id: 'lifestyle_additional', label: 'Lifestyle - Additional Relief for Sports/Travel', maxAmount: 500 },
+    { id: 'breastfeeding', label: 'Breastfeeding Equipment', maxAmount: 1000 },
+    { id: 'childcare', label: 'Child Care Centre and Kindergarten Fees', maxAmount: 3000 },
+    { id: 'sspn', label: 'Net Savings in SSPN', maxAmount: 8000 },
+    { id: 'alimony', label: 'Alimony Payment to Former Wife', maxAmount: 4000 },
+    { id: 'spouse', label: 'Spouse/Former Wife', maxAmount: 5000 },
+    { id: 'child', label: 'Child', maxAmount: 2000 },
+    { id: 'life_insurance', label: 'Life Insurance and KWSP', maxAmount: 7000 },
+    { id: 'deferred_annuity', label: 'Private Retirement Scheme and Deferred Annuity', maxAmount: 3000 },
+    { id: 'education_insurance', label: 'Education and Medical Insurance', maxAmount: 3000 },
+    { id: 'socso', label: 'Social Security Protection (PERKESO)', maxAmount: 350 },
+    { id: 'accommodation', label: 'Accommodation Benefit', maxAmount: 1000 },
+    { id: 'ev', label: 'Electric Vehicle Charging Equipment', maxAmount: 2500 }
   ];
 
   useEffect(() => {
@@ -119,6 +137,18 @@ function App() {
     return formattedValue;
   };
 
+  const handleRebateChange = (id: string, value: string) => {
+    const formattedValue = formatNumber(value);
+    const numericValue = parseFloat(value.replace(/,/g, '')) || 0;
+    
+    setRebates(prev => ({
+      ...prev,
+      [id]: numericValue
+    }));
+
+    return formattedValue;
+  };
+
   useEffect(() => {
     const income = parseFloat(annualIncome.replace(/,/g, '')) || 0;
     const monthlyIncome = income / 12;
@@ -134,9 +164,12 @@ function App() {
     setTaxableIncome(calculatedTaxableIncome);
     
     const calculatedTax = calculateTax(calculatedTaxableIncome);
-    setTaxAmount(calculatedTax);
-    setEffectiveRate(income > 0 ? (calculatedTax / income) * 100 : 0);
-  }, [annualIncome, epf, socso, deductions]);
+    const totalRebates = Object.values(rebates).reduce((sum, value) => sum + value, 0);
+    const finalTax = Math.max(0, calculatedTax - totalRebates);
+    
+    setTaxAmount(finalTax);
+    setEffectiveRate(income > 0 ? (finalTax / income) * 100 : 0);
+  }, [annualIncome, epf, socso, deductions, rebates]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-6 sm:py-12">
@@ -197,6 +230,41 @@ function App() {
               </div>
             </div>
 
+            {/* Tax Relief Section */}
+            <div className="bg-gray-50 p-4 sm:p-6 rounded-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Tax Relief</h2>
+                <button
+                  onClick={() => setShowTaxRelief(!showTaxRelief)}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  {showTaxRelief ? 'Hide' : 'Show'} Relief
+                </button>
+              </div>
+              {showTaxRelief && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {availableDeductions.map((deduction) => (
+                    <div key={deduction.id} className="bg-white p-4 rounded-lg shadow-sm">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {deduction.label}
+                        <span className="block text-xs text-gray-500">
+                          Max: MYR {deduction.maxAmount.toLocaleString()}
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={deductions[deduction.id]?.toLocaleString() || ''}
+                        onChange={(e) => handleDeductionChange(deduction.id, e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Enter amount"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Results Section */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
               <div className="bg-gray-50 p-4 sm:p-6 rounded-lg">
@@ -224,64 +292,95 @@ function App() {
               </div>
             </div>
 
-            {/* Tax Relief Section */}
+            {/* Rebate Section */}
             <div className="bg-gray-50 p-4 sm:p-6 rounded-lg">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Tax Relief</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {availableDeductions.map((deduction) => (
-                  <div key={deduction.id} className="bg-white p-4 rounded-lg shadow-sm">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {deduction.label}
-                      <span className="block text-xs text-gray-500">
-                        Max: MYR {deduction.maxAmount.toLocaleString()}
-                      </span>
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={deductions[deduction.id]?.toLocaleString() || ''}
-                      onChange={(e) => handleDeductionChange(deduction.id, e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                      placeholder="Enter amount"
-                    />
-                  </div>
-                ))}
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Tax Rebate</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Individual
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={rebates.individual?.toLocaleString() || ''}
+                    onChange={(e) => handleRebateChange('individual', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Enter amount"
+                  />
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Spouse/Isteri
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={rebates.spouse?.toLocaleString() || ''}
+                    onChange={(e) => handleRebateChange('spouse', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Enter amount"
+                  />
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Zakat
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={rebates.zakat?.toLocaleString() || ''}
+                    onChange={(e) => handleRebateChange('zakat', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Enter amount"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Tax Brackets Table */}
             <div className="bg-gray-50 p-4 sm:p-6 rounded-lg">
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">2024 Tax Brackets</h3>
-              <div className="overflow-x-auto -mx-4 sm:mx-0">
-                <div className="inline-block min-w-full align-middle">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Chargeable Income (MYR)
-                        </th>
-                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Rate (%)
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {taxBrackets.map((bracket, index) => (
-                        <tr key={index}>
-                          <td className="px-4 sm:px-6 py-3 whitespace-nowrap text-sm text-gray-500">
-                            {bracket.max
-                              ? `${bracket.min.toLocaleString()} - ${bracket.max.toLocaleString()}`
-                              : `${bracket.min.toLocaleString()} and above`}
-                          </td>
-                          <td className="px-4 sm:px-6 py-3 whitespace-nowrap text-sm text-gray-500">
-                            {bracket.rate}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">2024 Tax Brackets</h3>
+                <button
+                  onClick={() => setShowTaxBrackets(!showTaxBrackets)}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  {showTaxBrackets ? 'Hide' : 'Show'} Brackets
+                </button>
               </div>
+              {showTaxBrackets && (
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Chargeable Income (MYR)
+                          </th>
+                          <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Rate (%)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {taxBrackets.map((bracket, index) => (
+                          <tr key={index}>
+                            <td className="px-4 sm:px-6 py-3 whitespace-nowrap text-sm text-gray-500">
+                              {bracket.max
+                                ? `${bracket.min.toLocaleString()} - ${bracket.max.toLocaleString()}`
+                                : `${bracket.min.toLocaleString()} and above`}
+                            </td>
+                            <td className="px-4 sm:px-6 py-3 whitespace-nowrap text-sm text-gray-500">
+                              {bracket.rate}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
