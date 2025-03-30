@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Calculator } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Calculator, Info } from 'lucide-react';
 
 interface TaxBracket {
   min: number;
@@ -22,10 +22,11 @@ interface TaxRange {
 
 function App() {
   const [annualIncome, setAnnualIncome] = useState<string>('');
-  const [epf, setEpf] = useState<boolean>(true);
-  const [socso, setSocso] = useState<boolean>(true);
+  const [epfAmount, setEpfAmount] = useState<string>('');
+  const [socsoAmount, setSocsoAmount] = useState<string>('');
   const [showTaxBrackets, setShowTaxBrackets] = useState<boolean>(false);
   const [showTaxRelief, setShowTaxRelief] = useState<boolean>(false);
+  const [showZakatTooltip, setShowZakatTooltip] = useState<boolean>(false);
   const [deductions, setDeductions] = useState<Record<string, number>>({});
   const [rebates, setRebates] = useState<Record<string, number>>({
     individual: 0,
@@ -36,6 +37,7 @@ function App() {
   const [taxAmount, setTaxAmount] = useState<number>(0);
   const [effectiveRate, setEffectiveRate] = useState<number>(0);
   const [totalDeductions, setTotalDeductions] = useState<number>(0);
+  const zakatTooltipRef = useRef<HTMLDivElement>(null);
 
   const taxBrackets: TaxBracket[] = [
     { min: 0, max: 5000, rate: 0 },
@@ -96,24 +98,23 @@ function App() {
     setDeductions(defaultDeductions);
   }, []);
 
-  const calculateSocso = (monthlyIncome: number): number => {
-    if (!socso) return 0;
-    const annualRate = monthlyIncome <= 5000 ? 0.005 : 0.006;
-    return monthlyIncome * 12 * annualRate;
+  const calculateSocso = (): number => {
+    const socsoValue = parseFloat(socsoAmount.replace(/,/g, '')) || 0;
+    return socsoValue;
   };
 
   const calculateTax = (income: number) => {
     if (income <= 0) return 0;
 
     // Find the applicable tax range
-    const range = taxRanges.find((r, i) => 
+    const range = taxRanges.find((r) => 
       income >= r.start && (r.next === null || income <= r.next)
     );
 
     if (!range) return 0;
 
     // Find the applicable tax bracket
-    const bracket = taxBrackets.find((b, i) => 
+    const bracket = taxBrackets.find((b) => 
       income >= b.min && (b.max === null || income <= b.max)
     );
 
@@ -178,10 +179,9 @@ function App() {
 
   useEffect(() => {
     const income = parseFloat(annualIncome.replace(/,/g, '')) || 0;
-    const monthlyIncome = income / 12;
     
-    const epfDeduction = epf ? income * 0.11 : 0;
-    const socsoDeduction = calculateSocso(monthlyIncome);
+    const epfDeduction = parseFloat(epfAmount.replace(/,/g, '')) || 0;
+    const socsoDeduction = calculateSocso();
     const reliefDeductions = Object.values(deductions).reduce((sum, value) => sum + (value || 0), 0);
     
     const totalDeductionsAmount = epfDeduction + socsoDeduction + reliefDeductions;
@@ -196,7 +196,24 @@ function App() {
     
     setTaxAmount(finalTax);
     setEffectiveRate(income > 0 ? (finalTax / income) * 100 : 0);
-  }, [annualIncome, epf, socso, deductions, rebates]);
+  }, [annualIncome, epfAmount, socsoAmount, deductions, rebates]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (zakatTooltipRef.current && !zakatTooltipRef.current.contains(event.target as Node)) {
+        setShowZakatTooltip(false);
+      }
+    }
+
+    // Only add the event listener if the tooltip is shown
+    if (showZakatTooltip) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showZakatTooltip]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-6 sm:py-12">
@@ -272,33 +289,6 @@ function App() {
                     placeholder="Enter your annual income"
                   />
                 </div>
-
-                <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="epf"
-                      checked={epf}
-                      onChange={(e) => setEpf(e.target.checked)}
-                      className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="epf" className="ml-2 block text-sm text-gray-700">
-                      Include EPF (11%)
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="socso"
-                      checked={socso}
-                      onChange={(e) => setSocso(e.target.checked)}
-                      className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="socso" className="ml-2 block text-sm text-gray-700">
-                      Include SOCSO
-                    </label>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -313,6 +303,52 @@ function App() {
                   {showTaxRelief ? 'Hide' : 'Show'} Relief
                 </button>
               </div>
+              
+              {/* EPF and SOCSO Checkboxes */}
+              <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Mandatory Contributions</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      EPF Contribution
+                      <span className="block text-xs text-gray-500">
+                        Default: 11% of annual income
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={epfAmount}
+                      onChange={(e) => {
+                        const formattedValue = formatNumber(e.target.value);
+                        setEpfAmount(formattedValue);
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Enter EPF amount"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      SOCSO Contribution
+                      <span className="block text-xs text-gray-500">
+                        Varies based on income
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={socsoAmount}
+                      onChange={(e) => {
+                        const formattedValue = formatNumber(e.target.value);
+                        setSocsoAmount(formattedValue);
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Enter SOCSO amount"
+                    />
+                  </div>
+                </div>
+              </div>
+              
               {showTaxRelief && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {availableDeductions.map((deduction) => (
@@ -370,6 +406,20 @@ function App() {
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Zakat
+                    <div className="relative inline-block" ref={zakatTooltipRef}>
+                      <span 
+                        className="inline-block ml-1 cursor-pointer" 
+                        onClick={() => setShowZakatTooltip(!showZakatTooltip)}
+                      >
+                        <Info className="h-4 w-4 text-indigo-500 inline" />
+                      </span>
+                      {showZakatTooltip && (
+                        <div className="absolute z-10 w-64 p-3 bg-white rounded-lg shadow-lg border border-gray-200 text-sm text-gray-700 -left-24 top-6">
+                          <p>You can pay zakat online <a href="https://ezakat.org/?et=94" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 font-medium">here</a>.</p>
+                          <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-3 h-3 rotate-45 bg-white border-t border-l border-gray-200"></div>
+                        </div>
+                      )}
+                    </div>
                   </label>
                   <input
                     type="text"
